@@ -167,6 +167,27 @@ static void pads_start(void);   // Physical controllers, below
 }
 
 static UIColor *k_idle, *k_on, *k_line, *k_ringFill, *k_text, *k_textOn;
+// Themes (DM_PAD_THEME, default the profile's pad_theme): each key's own idle / pressed fill, rim and label colours, and the stick's and menu button's. Classic is every key the
+// shared translucent white above; Forest is an original palette after the N64 controller and the woods (blue A, green B, yellow X / Y like C buttons, red +, deep green shoulders,
+// bronze D-pad, gold rims, cream labels), with no game artwork. Every colour keeps its own low opacity, as above, so the picture shows through
+static UIColor *k_kidle[B_N], *k_kon[B_N], *k_kline[B_N], *k_ktext[B_N], *k_ktextOn[B_N], *k_knobIdle, *k_knobOn, *k_knobLine, *k_menuFill, *k_menuLine;
+static UIColor *rgba(uint32_t rgb, CGFloat a) { return [UIColor colorWithRed:((rgb >> 16) & 255) / 255.0 green:((rgb >> 8) & 255) / 255.0 blue:(rgb & 255) / 255.0 alpha:a]; }
+static int pad_theme(void) { const char *e = getenv("DM_PAD_THEME"); return e && *e ? atoi(e) : DM_GAME_PAD_THEME; }   // 0 Classic, 1 Forest
+static void theme_init(void) {
+    for (int b = 0; b < B_N; b++) { k_kidle[b] = k_idle; k_kon[b] = k_on; k_kline[b] = k_line; k_ktext[b] = k_text; k_ktextOn[b] = k_textOn; }
+    k_knobIdle = k_idle; k_knobOn = k_on; k_knobLine = k_line; k_menuFill = k_idle; k_menuLine = k_line;
+    if (pad_theme() != 1) return;
+    const uint32_t gold = 0xd9b45a, cream = 0xf6ecd2, forest = 0x1f4d2b, night = 0x0c1f12;
+    static const uint32_t fill[B_N] = {   // A B X Y L3 R3 L R ZL ZR + − left up right down
+        0x2f62d8, 0x2f9a45, 0xf0c232, 0xf0c232, 0xb08a3a, 0xb08a3a, forest, forest, forest, forest, 0xcc3a30, 0x3c5a44, 0x8a6a3c, 0x8a6a3c, 0x8a6a3c, 0x8a6a3c };
+    for (int b = 0; b < B_N; b++) {
+        int bright = b == B_X || b == B_Y;   // yellow keys: dark labels read better
+        k_kidle[b] = rgba(fill[b], 0.36); k_kon[b] = rgba(fill[b], 0.68); k_kline[b] = rgba(gold, 0.62);
+        k_ktext[b] = bright ? rgba(night, 0.80) : rgba(cream, 0.88); k_ktextOn[b] = rgba(night, 0.85);
+    }
+    k_ringFill = rgba(forest, 0.16); k_knobIdle = rgba(0x2f9a45, 0.36); k_knobOn = rgba(gold, 0.62); k_knobLine = rgba(gold, 0.62);
+    k_menuFill = rgba(forest, 0.32); k_menuLine = rgba(gold, 0.62); k_text = rgba(cream, 0.88);
+}
 static CAShapeLayer *shape(CALayer *parent) {
     CAShapeLayer *l = [CAShapeLayer layer];
     l.fillColor = k_idle.CGColor; l.strokeColor = k_line.CGColor; l.lineWidth = 1.5;
@@ -198,19 +219,20 @@ static BOOL fullOnly(int b) { return b == B_LS || b == B_RS || b >= B_LEFT; }   
             // each colour carries its own low opacity instead of lowering the whole view's alpha (that would add an off-screen pass for the full-screen layer)
             k_idle = [UIColor colorWithWhite:1 alpha:0.14]; k_on = [UIColor colorWithWhite:1 alpha:0.45]; k_line = [UIColor colorWithWhite:1 alpha:0.38];
             k_ringFill = [UIColor colorWithWhite:1 alpha:0.06]; k_text = [UIColor colorWithWhite:1 alpha:0.6]; k_textOn = [UIColor colorWithWhite:0 alpha:0.7];
+            theme_init();
         });
         _controls = [CALayer layer]; [self.layer addSublayer:_controls];
         _ring = shape(_controls); _ring.fillColor = k_ringFill.CGColor;
-        _knob = shape(_controls);
-        CAShapeLayer *in = [CAShapeLayer layer]; in.fillColor = nil; in.strokeColor = k_line.CGColor; in.lineWidth = 1.5;   // inner ring of the knob
+        _knob = shape(_controls); _knob.strokeColor = k_knobLine.CGColor; _ring.strokeColor = k_knobLine.CGColor;
+        CAShapeLayer *in = [CAShapeLayer layer]; in.fillColor = nil; in.strokeColor = k_knobLine.CGColor; in.lineWidth = 1.5;   // inner ring of the knob
         [_knob addSublayer:in];
         static NSString *const names[B_N] = {@"A", @"B", @"X", @"Y", @"L3", @"R3", @"L", @"R", @"ZL", @"ZR", @"+", @"−"};
         for (int b = 0; b < B_N; b++) {
-            _key[b] = shape(_controls);
-            if (names[b]) _label[b] = label(_key[b], names[b]);   // the D-pad arms carry no label
+            _key[b] = shape(_controls); _key[b].fillColor = k_kidle[b].CGColor; _key[b].strokeColor = k_kline[b].CGColor;
+            if (names[b]) { _label[b] = label(_key[b], names[b]); _label[b].foregroundColor = k_ktext[b].CGColor; }   // the D-pad arms carry no label
         }
         _menu = [DmMenuButton buttonWithType:UIButtonTypeCustom];
-        _menu.backgroundColor = k_idle; _menu.layer.borderColor = k_line.CGColor; _menu.layer.borderWidth = 1.5;
+        _menu.backgroundColor = k_menuFill; _menu.layer.borderColor = k_menuLine.CGColor; _menu.layer.borderWidth = 1.5;
         _menu.layer.shadowColor = UIColor.blackColor.CGColor; _menu.layer.shadowOpacity = 0.2; _menu.layer.shadowRadius = 3; _menu.layer.shadowOffset = CGSizeMake(0, 1);
         _menu.tintColor = k_text; _menu.accessibilityLabel = @"Menu";
         _menu.menu = CFBridgingRelease(dm_game_menu()); _menu.showsMenuAsPrimaryAction = YES;
@@ -550,9 +572,9 @@ static void placeLabel(CATextLayer *t, CGPoint c, CGFloat fs) {
     uint64_t all = _faceBits | _dpadBits | _btnBits;
     [CATransaction begin]; [CATransaction setDisableActions:YES];
     for (int b = 0; b < B_N; b++) { BOOL on = (all >> b) & 1;
-        _key[b].fillColor = (on ? k_on : k_idle).CGColor; _label[b].foregroundColor = (on ? k_textOn : k_text).CGColor; }
+        _key[b].fillColor = (on ? k_kon[b] : k_kidle[b]).CGColor; _label[b].foregroundColor = (on ? k_ktextOn[b] : k_ktext[b]).CGColor; }
     CGPoint h = self.stickHome, o = [self knobOffset:0];
-    _knob.position = CGPointMake(h.x + o.x, h.y + o.y); _knob.fillColor = (_stick[0] ? k_on : k_idle).CGColor;
+    _knob.position = CGPointMake(h.x + o.x, h.y + o.y); _knob.fillColor = (_stick[0] ? k_knobOn : k_knobIdle).CGColor;
     [CATransaction commit];
 }
 
