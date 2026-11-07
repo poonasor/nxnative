@@ -3,7 +3,7 @@
 //   The menu button stays while a physical controller is connected, so the menu is there in every layout and with every controller.
 //   Native (native, layout 3): a mobile game's layout in very transparent glass, after the mock-up the player chose: a floating left stick (a thumb on the left half holds it,
 //     centred where it lands, or on the drawn ring), the camera (right stick) on any touch of the right half no key takes, and round icon keys whose button letter sits in a small
-//     chip (round for A B X Y + −, square for the shoulders R and ZL): B a sword, A a tap, R a shield, ZL a target, X a bag, Y a grid, + a menu, − a map; the menu button (…) at the top right.
+//     chip (round for A B X Y + −, square for the shoulders R and ZL): B a sword, A a tap, R a shield, ZL a target, X a jump (two up arrows), Y a grid, + a menu, − a map; the menu button (…) at the top right.
 //     No D-pad, L, ZR, L3 or R3 (the 3D layout has them). Drawn with shape and gradient layers only (no live blur), so it costs the GPU nothing over the picture.
 //   Tap (touch): no control but the menu button, every other touch goes to the game's local touch viewport; offered only while the game is in handheld mode, the only one in which it reads the touch screen (Balatro, played by touch).
 //   2D (simple): top corners ZL above L (one column), ZR above R likewise, teardrops with the tip toward the screen corner; − and + side by side at the top centre; the left stick in the bottom-left corner (fixed ring, tilt measured from the ring centre, small dead zone);
@@ -709,11 +709,11 @@ static void placeLabel(CATextLayer *t, CGPoint c, CGFloat fs) {
     CGFloat g = self.gu;
     _nring = glassDisc(N_RING_R * g, NULL); _nring.position = self.natStickHome; [_nat addSublayer:_nring];
     CAShapeLayer *kb = nil; _nknob = glassDisc(N_KNOB_R * g, &kb); _nknobBase = kb; _nknob.position = self.natStickHome; [_nat addSublayer:_nknob];
-    static NSString *const sym[B_N] = { [B_A] = @"hand.tap.fill", [B_X] = @"bag", [B_Y] = @"square.grid.2x2", [B_R] = @"shield.lefthalf.filled", [B_ZL] = @"scope", [B_PLUS] = @"line.3.horizontal", [B_MINUS] = @"map" };
+    static NSString *const sym[B_N] = { [B_A] = @"hand.tap.fill", [B_X] = @"chevron.up.2", [B_Y] = @"square.grid.2x2", [B_R] = @"shield.lefthalf.filled", [B_ZL] = @"scope", [B_PLUS] = @"line.3.horizontal", [B_MINUS] = @"map" };
     static NSString *const chip[B_N] = { [B_A] = @"A", [B_B] = @"B", [B_X] = @"X", [B_Y] = @"Y", [B_R] = @"R", [B_ZL] = @"ZL", [B_PLUS] = @"+", [B_MINUS] = @"\u2212" };
     for (int i = 0; i < (int)(sizeof k_nat / sizeof *k_nat); i++) { int b = k_nat[i]; CGPoint c; CGFloat r; [self nat:b centre:&c radius:&r];
         CAShapeLayer *base = nil; CALayer *d = glassDisc(r, &base); d.position = c;
-        if (b == B_B) glassSword(d, 24 * g); else glassSymbol(d, sym[b], (b == B_A ? 17 : b == B_PLUS || b == B_MINUS ? 11 : b == B_X ? 13 : b == B_Y ? 12 : 15) * g, scale);
+        if (b == B_B) glassSword(d, 24 * g); else glassSymbol(d, sym[b], (b == B_A ? 17 : b == B_PLUS || b == B_MINUS ? 11 : b == B_X ? 14 : b == B_Y ? 12 : 15) * g, scale);
         glassChip(d, chip[b], b == B_R || b == B_ZL, scale);
         [_nat addSublayer:d]; _nk[b] = d; _nbase[b] = base;
     }
