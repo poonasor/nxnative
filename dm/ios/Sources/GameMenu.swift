@@ -14,8 +14,8 @@ public func dmGameMenu() -> UnsafeMutableRawPointer {
 }
 
 private func gameMenuItems() -> [UIMenuElement] {
-    let names = ["2D", "3D", "Tap"]
-    let layouts = (0..<3).filter { dm_pad_layout_offered(Int32($0)) }.map { l in
+    let names = ["2D", "3D", "Tap", "Native"]
+    let layouts = (0..<4).filter { dm_pad_layout_offered(Int32($0)) }.map { l in
         UIAction(title: names[l], state: dm_pad_layout() == l ? .on : .off) { _ in dm_pad_layout_set(Int32(l)) }
     }
     let layout = UIMenu(title: "Controller layout", options: .singleSelection, children: layouts)   // a choice's value shows in its submenu: a subtitle would make each row two lines
