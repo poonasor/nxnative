@@ -373,7 +373,9 @@ static void thr_free(thr_t *t) {   // Holding G; unlink from the all-threads cha
     pthread_cond_destroy(&t->cv); pthread_cond_destroy(&t->pcv); free(t);
 }
 static void wake_sync_waiters(const void *obj);
+__attribute__((weak)) void dm_frame_wg_leave(void) {}   // hle_nvn.c: a thread that joined the frame workgroup leaves it (one still joined when it exits is a crash in libdispatch)
 static void thread_exit(thr_t *t) {
+    dm_frame_wg_leave();
     t->exit_ns = now_ns(); t->exit_tick = dm_thread_tick_fn ? dm_thread_tick_fn() : 0;
     // No logging here: the exit happens on the guest thread's own stack (some are only a dozen or so KiB), and a printf with floating point would blow the stack (real-device smoke test: SIGBUS when LibcurlResolver exits, backtrace fprintf → __dtoa). Only the time is recorded, and it is printed later in the state dump
     pthread_mutex_lock(&G);
@@ -511,6 +513,19 @@ static void hitch_log(const hitch_t *h) {
         kinds[h->wkind], (unsigned long long)h->waddr, (unsigned long long)h->wkey, h->sleeping ? " sleeping" : "", h->host_work ? " host-work" : "", h->rs, h->svc, m ? m->name : "?",
         (unsigned long long)(m ? h->lr - (uint64_t)m->base : h->lr), w);
 }
+// Every guest thread once, as a hitch dump logs them, for a diagnostic that sees a stall of its own (DM_AUDREN_TRACE's long silences). On a thread of its own: hitch_grab suspends each
+// thread it reads, and the caller may be a guest thread (the audio renderer renders on the game's update call), which would then suspend itself for good
+static void *thread_dump_main(void *arg) {
+    static hitch_t hs[256]; static pthread_mutex_t mu = PTHREAD_MUTEX_INITIALIZER;
+    pthread_setname_np("dm thread dump");
+    pthread_mutex_lock(&mu); LOG("thread dump: %s", (const char *)arg);
+    int nt = 0;
+    pthread_mutex_lock(&G); for (thr_t *t = g_all; t && nt < 256; t = t->all) if (t->started && !t->exited) hitch_grab(t, &hs[nt++]); pthread_mutex_unlock(&G);
+    for (int k = 0; k < nt; k++) hitch_log(&hs[k]);
+    pthread_mutex_unlock(&mu);
+    return NULL;
+}
+void dm_thread_dump(const char *why) { pthread_t th; if (!pthread_create(&th, NULL, thread_dump_main, (void *)why)) pthread_detach(th); }
 static void *hitch_main(void *arg) {
     pthread_setname_np("dm hitch dump");
     const char *e = arg; uint64_t lim = (uint64_t)atoi(e) * 1000000ull, seen = 0, skip = 0; int n = 0;

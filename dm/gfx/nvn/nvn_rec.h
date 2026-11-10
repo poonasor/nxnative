@@ -207,11 +207,13 @@ static void rec_exec(const rec_t *r) {
 static void *rec_thread(void *arg) {
     (void)arg; pthread_setname_np("dm-encode");
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+    { void dm_frame_wg_join(void); dm_frame_wg_join(); }   // hle_nvn.c: the encode thread works to the frame's deadline
     for (;;) {
         pthread_mutex_lock(&g_rb_mu);
         while (!g_rb_head) { g_rb_sleeping = 1; pthread_cond_wait(&g_rb_work, &g_rb_mu); g_rb_sleeping = 0; }
         rec_blk *b = g_rb_head; g_rb_head = b->next; if (!g_rb_head) g_rb_tail = NULL; g_rb_busy = 1;
         pthread_mutex_unlock(&g_rb_mu);
+        { void dm_frame_wg_join(void); dm_frame_wg_join(); }   // Deadline boost turned on in the game's settings later: the encode thread joins then too (once; a cheap check after)
         @autoreleasepool { for (int i = 0; i < b->n; i++) rec_exec(&b->r[i]); }
         pthread_mutex_lock(&g_rb_mu);
         b->n = 0; b->next = g_rb_free; g_rb_free = b; g_rb_busy = 0;

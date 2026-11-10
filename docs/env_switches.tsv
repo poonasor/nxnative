@@ -10,7 +10,7 @@ DM_APP_VERSION	switch	Overrides the IPA's version in `build_ipa.sh`; by default 
 DM_AUDIO	switch	`1` plays audio through Core Audio, `0` uses the silent sink; real output is the default on iOS, the silent sink on the Mac (the Mac launcher sets `1`)
 DM_AUDIO_DUMP	diagnostic	`=<file>` writes every PCM block the game appends as is (16-bit, 48 kHz, channel count as in the OpenAudioOut log), to judge whether a sound played
 DM_AUDIO_MUTE	switch	`=1` runs the real Core Audio output path (callback pacing, background take-over) with the output silenced, for lifecycle tests on the Mac without noise
-DM_AUDREN_TRACE	diagnostic	When set, the CPU audio renderer logs every update with the number of frames rendered since the previous one
+DM_AUDREN_TRACE	diagnostic	When set, the CPU audio renderer logs every update with the number of frames rendered since the previous one, each stretch of digital silence of 200 ms or more (`silent from t=… for …`), with a dump of every guest thread once one passes 2 s (at most 4), and once a second the packets, samples and failures of the hardware Opus C interface (`DecodeOpusInterleavedWithHardware`)
 DM_AV1_DAV1D	switch	`=1` decodes AV1 movies with dav1d even where VideoToolbox decodes AV1 (Apple M3 and A17 Pro on), to compare the two or to check the path older chips take (`hle_movie_av1.c`)
 DM_BOOTPROF	diagnostic	When set, logs boot timing: the loader's breakdown (mapping, relocation, probes), Metal library loading, pipeline creation, texture uploads and the first present
 DM_BUNDLE_ID	switch	Overrides the iOS app's bundle ID in `build_ipa.sh` (default `org.nxnative.<title ID in lowercase>`)
@@ -43,6 +43,8 @@ DM_FORCE_STRICT	diagnostic	`=1` makes the loader fail on forced-hook entries no 
 DM_FPS	switch	`30` or `60` pins the frame rate the display link and frame pacing aim for; otherwise it follows the game's present interval (60, or 30 when the game asks for 30)
 DM_FPS_HOLD	player	`on` / `off` overrides the profile's `fps_hold`: whether late frames may raise the hold above the frame cap's vsyncs (on by default)
 DM_FPS_TARGET	player	Frame-rate cap: `30` or `60`, `120` for a game whose profile has `fps_max 120` (60 otherwise), or `0` for the game's own limit; overrides the profile's `fps_target`
+DM_FPS_TARGET	player	Frame-rate cap: `30` or `60`, or `0` for the game's own limit; overrides the profile's `fps_target`
+DM_FRAME_WG	player	`1` (launcher: Deadline boost): the threads that make a frame join an os_workgroup interval whose deadline is the present period, so the performance controller keeps them fast; off by default
 DM_FS	diagnostic	When set, logs file opens, paths not found or not mounted, and a read summary every 64 MiB or 1000 reads
 DM_FSLOG	diagnostic	`=<file>` writes one TSV line per ReadFile: seconds since boot, guest path, offset, length and guest buffer address
 DM_FSLOG_HASH	diagnostic	With `DM_FSLOG`, adds a column with the FNV-1a 64 hash of the bytes read
@@ -53,6 +55,7 @@ DM_GAMES_DIR	path	Profile folders outside the repository, separated by `:`, sear
 DM_GAMES_FIRST	switch	`=1` searches `DM_GAMES_DIR` before `dm/games`, so a provisional or derived profile wins over the game's own (the NSP script's `--provisional`)
 DM_GAME_ENV	switch	`KEY=VALUE` pairs, separated by spaces, that the game's own `getenv` returns, in place of the profile's `game_env` (`hle_os.c`); any other name goes to the SDK's empty environment
 DM_GFX_FIXTURE_OUT	test	`=<dir>`: graphics tests write their raw result textures and buffers there
+DM_GFX_SCALE	diagnostic	The graphics scale tier `oe::GetCurrentGraphicsScale` answers: `0` the whole GPU (default), `1` or `2` the smaller shares the system leaves a game while it uses the GPU itself (GameChat video)
 DM_GLSLC_CAPTURE	path	`=<dir>` saves every GLSLC output the game compiles at run time; `shader_split.py` reads it (default `<version dir>/glslc_capture`)
 DM_GL_CAPTURE	path	`=<dir>`: the GL layer writes every shader source the game compiles (`<key>.vert` / `<key>.frag`) for `gl_shaders.py`; the NSP script uses it to capture run-time shaders
 DM_GL_DRAWLOG	diagnostic	`=<n>[:<seconds>]` logs the first `<n>` GL draws after `<seconds>`, each with its framebuffer, viewport, scissor box, program, uniforms, samplers and its vertex attributes' first vertices; `=1` or more also names samplers that have no texture
@@ -107,7 +110,7 @@ DM_MOTION_AXES	switch	`=<map>` such as `x,-z,y`: maps Apple's controller axes to
 DM_MOTION_GAIN	switch	`=<gain>`: how fast the orientation is pulled toward the measured gravity, in rad/s per unit error (default 0.5; `0` integrates the gyro alone)
 DM_MOTION_HID	switch	On the Mac, `0` disables the passive Switch Pro Controller HID motion fallback (`motion_pro_mac.h`); enabled by default when exactly one physical Pro and one GameController Pro can use the same player slot; usable GameController motion takes priority
 DM_MOTION_LOG	diagnostic	`=1` logs player 1's mapped motion sample once a second per source (phone / GameController / controller HID; acceleration in G, gyro in revolutions/s), for checking the axes: flat and still reads acc 0 0 -1
-DM_MOVIE_TRACE	diagnostic	When set, the movie decoder logs every call with its thread and decoder (by default the first 12 calls, then every 2^k-th)
+DM_MOVIE_TRACE	diagnostic	When set, the movie decoder logs every call with its thread and decoder (by default the first 12 calls, then every 2^k-th), and each nn::codec video decoder logs once a second the packets taken and refused, the pictures decoded, the buffers released and the pictures held
 DM_MSL_DIR	path	Parent folder of the shader libraries: NVN loads from `b-<chain version>/` or the one file `b-<chain version>.img` beneath it, Vulkan from `vk/`, GL from `gl/`; the app and the Mac launcher set it
 DM_NDVE_ENGINE	switch	`0` runs nn::ndve's movie network (Ocarina of Time's title and opening movies) as the game's 12 translated dispatches after its colour conversion instead of the host's kernels (dm/gfx/msl/ndve_engine.metal, on by default: the same output, about half the frame's GPU time on an M4 Pro); `ab` alternates with DM_AB; `check` runs the game's dispatches and the host's network beside them and logs every 300 frames how many texels of the two differ. The host's kernels take only the model they were written for, bound by its shaders' keys and its weights' layout (docs/reference/shaders.md, The NDVE movie network by the host)
 DM_NICK	switch	The account nickname the game sees (default `Player`)
@@ -126,7 +129,6 @@ DM_NVN_CBDUMP_KEY	diagnostic	`=<shader key>`: limits `DM_NVN_CBDUMP` to draws us
 DM_NVN_CBLOG	diagnostic	`=1` logs the command memory the game adds to command buffers (`AddCommandMemory`: the first 60, then every 500th) and the out-of-memory callbacks
 DM_NVN_CLEARLOG	diagnostic	`=1` logs the first 40 colour clears drawn as a triangle (inside a pass, with a partial channel mask or a partial scissor)
 DM_NVN_CMDSTAT	diagnostic	`=1` logs every 300 frames the command recording usage: bytes and records per frame, command memory segment sizes, out-of-memory callbacks, host segments, count and bytes per command type
-DM_NVN_COPY_ABSORB	switch	`0` uploads a texture taken from its storage again after each GPU copy into it whose bytes the host also wrote into the storage (on by default the copy is absorbed: `pkg_copy_absorb`), to measure it
 DM_NVN_COUNT	diagnostic	`1` counts every NVN call (the counting trampolines) and writes the per-frame call lines; off by default (on with a `DM_NVN_TSV` table that has call rows), the count is an atomic add all recording threads share
 DM_NVN_CPUPROF	diagnostic	1 records CPU wall/time/instruction totals by renderer operation; off by default.
 DM_NVN_CSH_PRESCAN	diagnostic	`0` runs the compute-hoist scan at every pass's first draw even when no dispatch follows (as before; for timing)
@@ -163,6 +165,7 @@ DM_NVN_GEO_LEAN	switch	`0` draws passthrough geometry shaders through their full
 DM_NVN_GEO_MESH	switch	`0` draws passthrough geometry pairs that have a mesh library (`geo_mesh.tsv`) through the compute path; by default they are mesh draws in the render pass (`geo_mesh_draw`)
 DM_NVN_GEO_MESH_RUN	switch	`0` dispatches every mesh geometry draw on its own; by default consecutive mesh draws of one pair whose result does not depend on their order are drawn as one dispatch (`geo_mesh_take`)
 DM_NVN_GPUPROF	diagnostic	`=<f>`, `<f1>-<f2>` or `every:<n>`: logs the GPU start and duration of every encoder of those frames (`[gpuprof]` lines from Metal 4 counter heap timestamps)
+DM_NVN_GPU_STORAGE	switch	`0` stops what the GPU writes into a texture in storage the CPU can read (a GPU texture, or one uploaded from its storage) from being written into that storage on the GPU (on by default; `gsb_target`, `gsb_store`), to measure it
 DM_NVN_GPU_TS	switch	`segment` or `submission`: what timestamp reports record (GPU start / end of the segment holding each report, or one time for the whole submission), instead of the profile's `gpu_timestamps`
 DM_NVN_HILITE	diagnostic	`=<fragment shader key>,…`: those draws use a solid colour instead (magenta, green, cyan, yellow, blue, white in order), to tell wrong geometry from wrong shading
 DM_NVN_INDLOG	diagnostic	`=<n>`: the first n indirect draws (and those of pass-dumped frames) log their arguments at encode and as the GPU left them once the submission completed, with the first indices

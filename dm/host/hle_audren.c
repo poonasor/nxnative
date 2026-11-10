@@ -14,6 +14,7 @@
 // Command list format (SDK 16): header +0x04 command count, +0x08 mix buffer address, +0x10 buffer count, +0x14 samples per frame, +0x18 sample rate, commands from +0x20;
 //   each command +0x00 magic 0xcafebabe, +0x04 enabled, +0x05 command ID (DeviceSink = 0x13), +0x06 size; DeviceSink +0x128 upsampler buffer, +0x130 input count, +0x134 input indices (s16).
 #include "hle.h"
+__attribute__((weak)) void dm_thread_dump(const char *why) { (void)why; }   // default for unit tests that link this file alone; hle_thread.c's dumps every guest thread (DM_AUDREN_TRACE)
 #include <math.h>
 #include <stdatomic.h>
 #include <time.h>
@@ -96,6 +97,7 @@ typedef struct {
     void *render_tt;                         // the render thread (ThreadType from dm_guest_thread_spawn): Close joins it before the SDK tears the renderer down
     int16_t frame[FRAME_MAX * 2]; int frame_n;   // the latest frame (stereo int16)
     _Atomic uint64_t frames, nonsilent, updates, renders, catchups;
+    uint64_t quiet_ns; int quiet_dumped;   // DM_AUDREN_TRACE: start of the current stretch of silent frames (render thread)
     uint64_t last_r; int updated;            // the render count at the last update, once there was one
     int16_t cq[CQ][FRAME_MAX * 2]; int cq_n[CQ]; _Atomic uint32_t cq_head, cq_tail;   // output queue of catch-up frames
     pthread_mutex_t cq_mu; pthread_cond_t cq_cv;   // the render thread signals each frame it takes off the queue (catch-up pacing)
@@ -412,6 +414,13 @@ static int capture(ar_t *a, const uint8_t *cl, size_t len, int16_t *dst) {
                 dst[s] = (int16_t)v; loud |= (uint64_t)v;
             }
             atomic_fetch_add(&a->frames, 1); if (loud) atomic_fetch_add(&a->nonsilent, 1);
+            {   // DM_AUDREN_TRACE: each stretch of digital silence of 200 ms or more, when the sound comes back (render thread only)
+                static int tr = -1; if (tr < 0) tr = getenv("DM_AUDREN_TRACE") != NULL;
+                if (tr) { if (!loud) { uint64_t t = now_ns(); if (!a->quiet_ns) a->quiet_ns = t;
+                                       else if (t - a->quiet_ns > 2000000000ull && !a->quiet_dumped) { static int dumps; a->quiet_dumped = 1;
+                                                                                                         if (dumps++ < 4) dm_thread_dump("the audio renderer has rendered silence for 2 s (DM_AUDREN_TRACE)"); } }
+                          else if (a->quiet_ns) { uint64_t t = now_ns(); if (t - a->quiet_ns >= 200000000ull) LOG("audren: renderer %d silent from t=%.3f s for %.3f s", ar_index(a), a->quiet_ns / 1e9, (t - a->quiet_ns) / 1e9); a->quiet_ns = 0; a->quiet_dumped = 0; } }
+            }
             uint64_t f = atomic_load(&a->frames); if (f == 200 || f % 12000 == 0) LOG("audren: renderer %d rendered %llu frames, %llu of them not silent", ar_index(a), (unsigned long long)f, (unsigned long long)atomic_load(&a->nonsilent));
             return (int)nout;
         }

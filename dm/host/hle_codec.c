@@ -3,6 +3,8 @@
 // Basis: both are implementations of nn::codec::IOpusDecoder, with the 10 vtable slots identical one by one in order and signature (destructor×2, GetWorkBufferSize, IsInitialized,
 // Initialize, Finalize, GetSampleRate, GetChannelCount, Reset, DecodeInterleaved); the game allocates 0x40 bytes and the software object is 0x30 bytes.
 #include "hle.h"
+#include <pthread.h>
+#include <stdatomic.h>
 
 HLE_FORCE("_ZN2nn5codec19HardwareOpusDecoderC1Ei", "hwopus service; replaced by the SDK software OpusDecoder (same IOpusDecoder virtual interface)",
           void, h_codec_HwOpusCtor, void *self, int option) {
@@ -55,7 +57,17 @@ HLE_FORCE("_ZN2nn5codec24ResetHardwareOpusDecoderEPNS0_23HardwareOpusDecoderType
 HLE_FORCE("_ZN2nn5codec33DecodeOpusInterleavedWithHardwareEPNS0_23HardwareOpusDecoderTypeEPmPiPsmPKvm", "hwopus service; software OpusDecoder", int, h_codec_HwOpusDecode,
           void *hw, size_t *consumed, int *samples, int16_t *out, size_t out_size, const void *in, size_t in_size) {
     int (*f)(void *, size_t *, int *, int16_t *, size_t, const void *, size_t) = opus_fn("_ZN2nn5codec21DecodeOpusInterleavedEPNS0_15OpusDecoderTypeEPmPiPsmPKvm");
-    return f(opus_soft(hw), consumed, samples, out, out_size, in, in_size);
+    int r = f(opus_soft(hw), consumed, samples, out, out_size, in, in_size);
+    {   // DM_AUDREN_TRACE: once a second, the packets decoded in that second, the samples they gave and the failures
+        static int tr = -1; if (tr < 0) tr = getenv("DM_AUDREN_TRACE") != NULL;
+        static _Atomic uint64_t n, smp, bad, t0; static pthread_mutex_t mu = PTHREAD_MUTEX_INITIALIZER;
+        if (tr) { atomic_fetch_add(&n, 1); atomic_fetch_add(&smp, r == 0 && samples ? (uint64_t)*samples : 0); if (r) atomic_fetch_add(&bad, 1);
+            uint64_t t = now_ns(); pthread_mutex_lock(&mu);
+            if (!t0) t0 = t; else if (t - t0 >= 1000000000ull) { LOG("[codec] Opus (hardware C interface) at t=%.3f s: in %.2f s %llu packets decoded, %llu samples, %llu failed", t / 1e9, (t - t0) / 1e9,
+                (unsigned long long)atomic_exchange(&n, 0), (unsigned long long)atomic_exchange(&smp, 0), (unsigned long long)atomic_exchange(&bad, 0)); t0 = t; }
+            pthread_mutex_unlock(&mu); }
+    }
+    return r;
 }
 
 // nn::codec::HardwareOpusMultiStreamDecoder (Hyrule Warriors: Age of Calamity, SDK 9.6.0: its sound streams are multi-stream Opus): the same swap as HardwareOpusDecoder above.

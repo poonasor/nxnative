@@ -41,7 +41,8 @@ typedef struct { uint32_t magic, dec, idx, gen; } cv_sync;   // nn::gs::NativeSy
 enum { CV_VP8, CV_VP9, CV_H264, CV_AV1 };
 static const char *const k_cv_name[] = {"VP8", "VP9", "H.264", "AV1"};
 typedef struct {
-    uint32_t magic, id; pthread_mutex_t mu; vpx_codec_ctx_t vpx; int vpx_ok; void *event; uint64_t submits, pictures;
+    uint32_t magic, id; pthread_mutex_t mu; vpx_codec_ctx_t vpx; int vpx_ok; void *event; uint64_t submits, pictures, refused, released;
+    uint64_t tr_ns, tr_sub, tr_pic, tr_ref, tr_rel;   // DM_MOVIE_TRACE: the counts at the last trace line (cv_trace)
     int codec; uint16_t w, h; mavc *avc; uint8_t *csd; size_t csd_n;   // H.264: VideoToolbox and the parameter sets Initialize gave
     mav1 *av1;   // AV1: VideoToolbox, or dav1d where the chip has no AV1 decoder (hle_movie_av1.c)
     struct { cv_pool *pool; uint32_t pidx; int reg, filled; uint32_t gen, filled_gen; uint16_t w, h; int64_t ts; uint8_t eos; } buf[CV_BUFS];
@@ -343,6 +344,14 @@ static vpx_image_t *av1_to_i420(const mav1_picture *p) {   // the decoder's NV12
     }
     return c;
 }
+// DM_MOVIE_TRACE: once a second per decoder, the packets taken and refused, the pictures decoded and the buffers released in that second, and the pictures held (decoder lock held)
+static void cv_trace(cv_dec *d) {
+    static int on = -1; if (on < 0) on = getenv("DM_MOVIE_TRACE") != NULL;
+    uint64_t t = now_ns(); if (!on || t - d->tr_ns < 1000000000ull) return;
+    if (d->tr_ns) LOG("[codec] %s decoder %u at t=%.3f s: in %.2f s %llu packets taken, %llu refused, %llu pictures decoded, %llu buffers released; %d pictures held", k_cv_name[d->codec], d->id, t / 1e9, (t - d->tr_ns) / 1e9,
+                      (unsigned long long)(d->submits - d->tr_sub), (unsigned long long)(d->refused - d->tr_ref), (unsigned long long)(d->pictures - d->tr_pic), (unsigned long long)(d->released - d->tr_rel), d->nheld);
+    d->tr_ns = t; d->tr_sub = d->submits; d->tr_pic = d->pictures; d->tr_ref = d->refused; d->tr_rel = d->released;
+}
 // One packet: decoded at once; its pictures wait for released buffers (end of stream marks the last one, or comes as a buffer of its own).
 // A refusal (CV_BUSY, nn::codec 3603) is the decoder's defined answer, not a fault: NintendoSDK_movie's detail::SubmitDecoderInputBuffer turns exactly that result into its
 // own retry code 0x7a, which VideoDecoder::DecodeAsync hands back to the player, and aborts on any other failure (Ocarina of Time's subsdk0 +0x10fd20, +0x103840). So it is
@@ -350,7 +359,8 @@ static vpx_image_t *av1_to_i420(const mav1_picture *p) {   // the decoder's NV12
 static Result cv_dec_submit(uint64_t *out, void *t, const void *data, uint64_t size, int64_t ts, bool eos) {
     cv_dec *d = cv_of(t); if (!d) return CV_R(2004);
     pthread_mutex_lock(&d->mu);
-    if (d->nheld >= CV_HOLD) { static int n; if (n++ < 4) LOG("nn::codec %s: busy (result 3603), a packet refused with %d pictures waiting for a released buffer",k_cv_name[d->codec], d->nheld); if (d->event) hle_clear_system_event(d->event); pthread_mutex_unlock(&d->mu); return CV_BUSY; }
+    cv_trace(d);
+    if (d->nheld >= CV_HOLD) { d->refused++; static int n; if (n++ < 4) LOG("nn::codec %s: busy (result 3603), a packet refused with %d pictures waiting for a released buffer",k_cv_name[d->codec], d->nheld); if (d->event) hle_clear_system_event(d->event); pthread_mutex_unlock(&d->mu); return CV_BUSY; }
     int got = 0;
     if (d->codec == CV_H264 && d->avc) {   // VideoToolbox reorders: pictures leave in presentation order, all of them at the end of the stream
         if (size && mavc_decode(d->avc, data, (int)size, ts / 1000) < 0) { static int n; if (n++ < 4) LOG("[RED] nn::codec H.264: VideoToolbox could not decode a packet"); }
@@ -385,7 +395,7 @@ static Result cv_dec_acq(uint32_t *idx, cv_sync *sync, void *t) {
 static void cv_dec_rel(void *t, uint32_t i, cv_sync sync) {
     (void)sync; cv_dec *d = cv_of(t); if (!d || i >= CV_BUFS || !d->buf[i].reg) { LOG("[RED] nn::codec::Release…DecoderOutputBuffer index %u", i); return; }
     pthread_mutex_lock(&d->mu);
-    d->buf[i].gen++; d->buf[i].filled = 0;
+    d->buf[i].gen++; d->buf[i].filled = 0; d->released++; cv_trace(d);
     if (d->pcount < CV_BUFS) { d->pend[(d->phead + d->pcount) % CV_BUFS] = i; d->pcount++; }
     if (d->fcount < 8) { d->fifo[(d->fhead + d->fcount) % 8] = i; d->fcount++; } else LOG("[RED] nn::codec: acquirable queue full at release %u", i);
     drain(d, 0);
