@@ -63,6 +63,8 @@ brew install xcodegen zstd glslang
 python3 -m pip install lz4 "capstone>=5,<6" fonttools nsz zbic "backports.zstd; python_version < '3.14'"
 ```
 
+Homebrew's Python refuses system-wide `pip install` (`externally-managed-environment`): install into a venv instead, `python3 -m venv ~/venv && ~/venv/bin/pip install -r .github/requirements/tools.txt`, and run the scripts with `~/venv/bin/python`. To see everything that is missing at once, with a fix for each, run `scripts/check_setup.py [game folder]` (it changes nothing).
+
 **2. Put your game in a folder**: the game, plus its update and DLC if you have them (`.nsp`, `.xci`, `.nsz` or `.xcz`):
 
 ```
