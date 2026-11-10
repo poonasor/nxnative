@@ -905,6 +905,12 @@ HLE_FORCE("_ZN2nn3hid22GetVibrationDeviceInfoEPNS0_19VibrationDeviceInfoERKNS0_2
 HLE_FORCE("_ZN2nn3hid24IsVibrationDeviceMountedERKNS0_21VibrationDeviceHandleE", "vibration: device mounted when the channel has an output", unsigned, h_hid_VibMounted, const uint32_t *h) {
     return h && vib_targets(*h);
 }
+// The Switch 2 form (Ounce: the new Joy-Con and Pro Controller actuators). The SDK's own call reaches the hid service: nn::diag abort 0xe15 under hid::detail::IsOunceVibrationDeviceMounted
+// (sdk+0x6cd610 in SDK 22.2.8). The Legend of Zelda: Ocarina of Time asks it when an ocarina note is played, with rumble on or off. Answered not mounted: the host has no Switch 2 actuators,
+// and a mounted device would lead the game on to the Ounce vibration calls, which have no host answer yet
+HLE_FORCE("_ZN2nn3hid29IsOunceVibrationDeviceMountedERKNS0_21VibrationDeviceHandleE", "Switch 2 vibration device: not mounted (the host has none)", unsigned, h_hid_VibOunceMounted, const uint32_t *h) {
+    (void)h; return 0;
+}
 HLE_FORCE("_ZN2nn3hid23GetActualVibrationValueEPNS0_14VibrationValueERKNS0_21VibrationDeviceHandleE", "vibration: last accepted channel value", void, h_hid_VibActual, dm_vibration *v, const uint32_t *h) {
     uint32_t targets = h ? vib_targets(*h) : 0;
     *v = targets ? dm_haptics_actual(__builtin_ctz(targets), *h >> 16 & 1) : (dm_vibration){0, 160, 0, 320};
